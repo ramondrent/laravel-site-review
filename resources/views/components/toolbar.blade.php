@@ -7,9 +7,8 @@
     $pages = app(\RamonDrent\SiteReview\Services\ReviewPages::class);
     $frontendConfig = $review->frontendConfig($pages);
     $reviewSession = $access->current(request());
-    $distDir = dirname(__DIR__, 3).'/dist';
-    $cssVersion = is_file($distDir.'/site-review.css') ? substr((string) md5_file($distDir.'/site-review.css'), 0, 12) : '1';
-    $jsVersion = is_file($distDir.'/site-review.js') ? substr((string) md5_file($distDir.'/site-review.js'), 0, 12) : '1';
+    $cssVersion = $review->assetVersion('site-review.css');
+    $jsVersion = $review->assetVersion('site-review.js');
   @endphp
   <link rel="stylesheet" href="{{ route('site-review.asset', ['file' => 'site-review.css', 'v' => $cssVersion], false) }}" />
   @if($reviewSession)

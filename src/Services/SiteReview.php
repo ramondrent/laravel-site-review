@@ -6,6 +6,22 @@ use Illuminate\Support\Facades\Lang;
 
 class SiteReview
 {
+    /** @var array<string, string> */
+    private static array $assetVersions = [];
+
+    public function assetVersion(string $file): string
+    {
+        if (isset(self::$assetVersions[$file])) {
+            return self::$assetVersions[$file];
+        }
+
+        $path = dirname(__DIR__, 2).'/dist/'.$file;
+
+        return self::$assetVersions[$file] = is_file($path)
+            ? substr((string) md5_file($path), 0, 12)
+            : '1';
+    }
+
     public function enabled(): bool
     {
         return (bool) config('site-review.enabled', false);
