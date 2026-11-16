@@ -1,6 +1,7 @@
 import { applyReviewerColor, dateLocale, initials, isSharedCopy, onReady, pageLabel, rememberReviewer, reviewBusy, reviewerName, reviewFetch, reviewMode, reviewToast, t, typing } from './review-ui';
 
-onReady(() => {
+export function initTextReview() {
+  onReady(() => {
   const root = document.querySelector('[data-feedback]');
   if (!root) return;
   const $ = selector => root.querySelector(selector);
@@ -293,4 +294,5 @@ onReady(() => {
   $('[data-review-scope]').addEventListener('change', () => loadHistory());
   $('[data-review-log-refresh]').addEventListener('click', () => loadHistory());
   more.addEventListener('click', () => loadHistory(false));
-});
+  });
+}

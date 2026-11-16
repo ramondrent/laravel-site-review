@@ -1,6 +1,7 @@
 import { applyReviewerColor, dateLocale, initials, onReady, pageLabel, rememberReviewer, reviewerName, reviewFetch, reviewToast, t } from './review-ui';
 
-onReady(() => {
+export function initReviewAccess() {
+  onReady(() => {
   // A back/forward-cache restore must re-check access with the server.
   window.addEventListener('pageshow', event => { if (event.persisted) location.reload(); });
   const access = document.querySelector('[data-review-access]');
@@ -243,4 +244,5 @@ onReady(() => {
       $('[data-review-lock]').disabled = false;
     }
   });
-});
+  });
+}

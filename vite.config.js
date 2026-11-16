@@ -10,8 +10,8 @@ export default defineConfig({
       input: resolve(import.meta.dirname, 'resources/js/site-review.js'),
       output: {
         format: 'es',
+        codeSplitting: false,
         entryFileNames: 'site-review.js',
-        chunkFileNames: 'site-review-cursors.js',
         assetFileNames: (assetInfo) => {
           if (assetInfo.names?.some(n => n.endsWith('.css')) || assetInfo.name?.endsWith('.css')) {
             return 'site-review.css';

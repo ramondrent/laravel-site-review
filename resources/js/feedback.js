@@ -1,6 +1,7 @@
 import { applyReviewerColor, dateLocale, initials, onReady, rememberReviewer, reviewBusy, reviewConfig, reviewerColor, reviewerName, reviewFetch, reviewMode, reviewToast, t, typing } from './review-ui';
 
-onReady(() => {
+export function initFeedback() {
+  onReady(() => {
   const root = document.querySelector('[data-feedback]');
   if (!root) return;
   const $ = selector => root.querySelector(selector);
@@ -949,4 +950,5 @@ onReady(() => {
   });
   applyVisibility();
   loadNotes();
-});
+  });
+}

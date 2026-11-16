@@ -1,6 +1,7 @@
 import { onReady, reviewerColor, reviewFetch, t } from './review-ui';
 
-onReady(async () => {
+export function initReviewCursors() {
+  onReady(async () => {
   const layer = document.querySelector('[data-review-live-cursors]');
   if (!layer) return;
   const root = document.querySelector('[data-feedback]');
@@ -50,7 +51,7 @@ onReady(async () => {
     cursor.element.classList.toggle('review-live-cursor-left', x > innerWidth - 160);
   }
   function receive(data) {
-    if (!subscribed || !enabled || document.hidden || !members.has(data?.id)) return;
+    if (!subscribed || !enabled || document.hidden || data?.id === echo?.socketId() || !members.has(data?.id)) return;
     if (!data.visible) { remove(data.id); return; }
     if (typeof data.anchor !== 'string' || !/^(copy|id):[a-zA-Z0-9_\-:.]+$/.test(data.anchor) || ![data.x, data.y].every(n => Number.isFinite(n) && n >= 0 && n <= 1)) return;
     const member = members.get(data.id);
@@ -173,4 +174,5 @@ onReady(async () => {
   setInterval(join, 60000);
   updateStatus(t('cursors_connecting'));
   start();
-});
+  });
+}
