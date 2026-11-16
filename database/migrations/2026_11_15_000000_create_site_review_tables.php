@@ -19,8 +19,11 @@ return new class extends Migration
                 $table->string('name', 100);
                 $table->text('body');
                 $table->string('anchor', 2000)->nullable();
+                $table->json('anchor_meta')->nullable();
                 $table->decimal('pin_x', 7, 4)->nullable();
                 $table->decimal('pin_y', 7, 4)->nullable();
+                $table->timestamp('resolved_at')->nullable();
+                $table->string('resolved_by', 100)->nullable();
                 $table->timestamps();
                 $table->softDeletes();
             });

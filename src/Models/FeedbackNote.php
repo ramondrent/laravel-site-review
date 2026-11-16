@@ -22,9 +22,20 @@ class FeedbackNote extends Model
         'name',
         'body',
         'anchor',
+        'anchor_meta',
         'pin_x',
         'pin_y',
+        'resolved_at',
+        'resolved_by',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'anchor_meta' => 'array',
+            'resolved_at' => 'datetime',
+        ];
+    }
 
     public function parent(): BelongsTo
     {

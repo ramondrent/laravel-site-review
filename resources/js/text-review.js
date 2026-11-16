@@ -249,6 +249,9 @@ export function initTextReview() {
         comment_created: t('kind_comment_created'),
         comment_replied: t('kind_comment_replied'),
         comment_updated: t('kind_comment_updated'),
+        comment_moved: t('kind_comment_moved'),
+        comment_resolved: t('kind_comment_resolved'),
+        comment_reopened: t('kind_comment_reopened'),
         comment_deleted: t('kind_comment_deleted'),
       };
       const locale = dateLocale();

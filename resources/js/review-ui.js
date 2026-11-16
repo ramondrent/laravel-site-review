@@ -155,13 +155,28 @@ export async function reviewFetch(url, options = {}) {
   return fetch(url, { ...options, method, headers: makeHeaders() });
 }
 
-export function reviewToast(message) {
+export function reviewToast(message, options = {}) {
   const el = document.querySelector('[data-feedback-toast]');
   if (!el) return;
-  el.textContent = message;
+  el.replaceChildren();
+  const span = document.createElement('span');
+  span.textContent = message;
+  el.append(span);
+  if (options.actionLabel && typeof options.onAction === 'function') {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'feedback-toast-action';
+    btn.textContent = options.actionLabel;
+    btn.addEventListener('click', () => {
+      clearTimeout(toastTimer);
+      el.hidden = true;
+      options.onAction();
+    });
+    el.append(btn);
+  }
   el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, 4500);
+  toastTimer = setTimeout(() => { el.hidden = true; }, options.duration ?? 4500);
 }
 
 export function reviewMode(mode) {

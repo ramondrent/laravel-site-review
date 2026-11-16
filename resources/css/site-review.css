@@ -43,24 +43,37 @@ body:has([data-feedback]) { padding-bottom: 48px; }
 .review-self { width: 26px; height: 26px; margin-left: 3px; border: 2px solid #242424; box-shadow: 0 0 0 1px #ffffff20; }
 .feedback-hint, .review-edit-hint, .feedback-toast { position: fixed; z-index: 1450; bottom: 60px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; width: max-content; max-width: calc(100vw - 24px); padding: 9px 13px; border-radius: 10px; border: 1px solid #ffffff15; background: #1c1c1cf5; box-shadow: 0 4px 16px #0002; color: #d6d6d6; font-size: 12px; }
 .feedback-hint button, .review-edit-hint button { padding: 0; }
+.feedback .feedback-toast-action { flex: none; padding: 3px 9px; border-radius: 6px; background: #ffffff18; color: var(--review-accent); font-size: 11px; font-weight: 600; white-space: nowrap; }
+.feedback .feedback-toast-action:hover { background: #ffffff28; color: #fff; }
 .feedback-placing body, .feedback-placing body *:not(.feedback):not(.feedback *) { cursor: crosshair !important; }
 .feedback-placing main :is([data-copy-key],h1,h2,h3,h4,p,li,dt,dd,blockquote,img):hover:not(:has(:is([data-copy-key],img):hover)), .feedback-placing main :focus-visible, [data-review-comment-target] { outline: 2px solid var(--comment-target-color, #edeae4); outline-offset: 5px; border-radius: 3px; }
 .review-editing [data-copy-key]:is(:hover, :focus-visible), [data-review-selected] { outline: 2px solid #edeae4; outline-offset: 5px; border-radius: 3px; }
 .review-editing [data-copy-key] { cursor: text; }
 .feedback-pins { position: fixed; inset: 0 0 48px; z-index: 1100; pointer-events: none; }
-.feedback .feedback-pin { pointer-events: auto; position: absolute; display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-width: 33px; height: 33px; padding: 0 7px; transform: translate(-2px, calc(-100% + 2px)); transform-origin: 2px calc(100% - 2px); border-radius: 999px 999px 999px 5px; border: 3px solid #202020; background: var(--user-color, var(--self-color, var(--review-accent))); color: #242027; box-shadow: 0 2px 6px #0003; font-size: 10px; font-weight: 700; line-height: 1; white-space: nowrap; transition: scale .15s; }
+.feedback .feedback-pin { pointer-events: auto; position: absolute; display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-width: 33px; height: 33px; padding: 0 7px; transform: translate(-2px, calc(-100% + 2px)); transform-origin: 2px calc(100% - 2px); border-radius: 999px 999px 999px 5px; border: 3px solid #202020; background: var(--user-color, var(--self-color, var(--review-accent))); color: #242027; box-shadow: 0 2px 6px #0003; font-size: 10px; font-weight: 700; line-height: 1; white-space: nowrap; cursor: grab; touch-action: none; transition: scale .15s; }
+.feedback .feedback-pin-dragging { cursor: grabbing; scale: 1.14; z-index: 4; transition: none; }
+.feedback .feedback-pin-changed { box-shadow: 0 0 0 1.5px #f5d6a499, 0 2px 6px #0003; }
 .feedback .feedback-pin-thread { padding: 0 9px; letter-spacing: -.01em; }
 .feedback .feedback-pin-sep { opacity: .6; font-weight: 600; }
 .feedback .feedback-pin:is(:hover, :focus-visible, [aria-expanded="true"]) { scale: 1.12; z-index: 2; box-shadow: 0 0 0 2px color-mix(in srgb, var(--user-color, var(--self-color, var(--review-accent))) 55%, transparent), 0 2px 8px #0003; }
-.feedback .feedback-pin-draft { background: var(--user-color, var(--self-color, var(--review-accent))); font-size: 18px; }
+.feedback .feedback-pin-draft { background: var(--user-color, var(--self-color, var(--review-accent))); font-size: 18px; cursor: pointer; }
 .feedback-sticky, .review-dialog, .feedback-board { position: fixed; z-index: 1350; margin: 0; color: var(--review-text); background: var(--review-bg); border: 1px solid #ffffff12; border-radius: 18px; box-shadow: 0 12px 40px #0003, 0 2px 8px #0003; max-width: calc(100vw - 24px); max-height: calc(100dvh - 80px); overflow: auto; overscroll-behavior: contain; font: inherit; }
 .feedback-sticky { width: 332px; padding: 0 12px 12px; border-top: 2.5px solid var(--user-color, var(--self-color, var(--review-accent))); display: flex; flex-direction: column; }
-.feedback-sticky-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 0 -12px 0; padding: 7px 10px 7px 14px; border-bottom: 1px solid var(--review-border); font-size: 12px; color: #c4c4c4; flex: none; }
+.feedback-sticky-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 0 -12px 0; padding: 7px 10px 7px 14px; border-bottom: 1px solid var(--review-border); font-size: 12px; color: #c4c4c4; flex: none; }
+.feedback-sticky-header-actions { display: flex; align-items: center; gap: 4px; flex: none; }
+.feedback .feedback-resolve-button { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px; border-radius: 99px; background: #262626; border: 1px solid #ffffff16; color: #d6d6d6; font-size: 11px; font-weight: 500; white-space: nowrap; transition: background .15s, color .15s, border-color .15s; }
+.feedback .feedback-resolve-button svg { width: 13px; height: 13px; }
+.feedback .feedback-resolve-button:hover { background: #323232; color: #fff; border-color: #ffffff28; }
+.feedback .feedback-resolve-button.is-resolved { background: #293529; border-color: #8fa67a55; color: #cce3ba; }
 .feedback .review-icon-button { display: grid; place-items: center; flex: none; width: 27px; height: 27px; border-radius: 7px; padding: 0; color: #999; font: 20px/1 sans-serif; }
 .feedback .review-icon-button:hover { background: #ffffff0c; color: #eee; }
 .feedback .review-anchor-label { font-size: 11px; color: #929292; padding: 9px 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; }
 .review-anchor-label::before { content: '⌗'; margin-right: 6px; color: var(--user-color, #a8a29e); }
 .feedback .review-anchor-label:empty { display: none; }
+.feedback-anchor-notice { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin: 0 0 8px; padding: 7px 9px; border-radius: 9px; background: #23211e; border: 1px solid #f5d0a929; color: #d8cfc3; font-size: 11px; line-height: 1.4; flex: none; }
+.feedback-anchor-notice p { min-width: 0; overflow-wrap: anywhere; }
+.feedback .feedback-move-button { flex: none; padding: 4px 8px; border-radius: 6px; background: #33302b; color: var(--review-accent); font-size: 11px; font-weight: 500; white-space: nowrap; }
+.feedback .feedback-move-button:hover { background: #413d37; color: #fff; }
 .feedback-composer { position: relative; border: 1px solid #ffffff16; border-radius: 16px; background: #202020; }
 .feedback-composer:focus-within { border-color: var(--user-color, var(--self-color, var(--review-accent))); box-shadow: 0 0 0 1px color-mix(in srgb, var(--user-color, var(--self-color, var(--review-accent))) 25%, transparent); }
 .feedback textarea, .feedback input { color: #eee; background: #242424; border: 1px solid #ffffff16; }
@@ -111,8 +124,10 @@ body:has([data-feedback]) { padding-bottom: 48px; }
 .feedback .review-panel-header h2 { font-size: 14px; font-weight: 600; line-height: 1.4; }
 .feedback .review-panel-header p { font-size: 11px; color: #969696; margin-top: 2px; }
 .feedback-board-actions, .review-log-controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 12px 7px; padding: 3px; border-radius: 30px; background: #2b2b2b; font-size: 11px; }
-.feedback-board-actions > span { padding: 5px 12px; background: #414141; border-radius: 30px; color: #eee; }
-.feedback-board-actions [data-feedback-board-count] { color: #aaa; margin-left: 4px; }
+.feedback-filter-tabs { display: inline-flex; gap: 2px; min-width: 0; }
+.feedback .feedback-filter-tabs button { padding: 5px 11px; border-radius: 30px; color: #aaa; font-size: 11px; }
+.feedback .feedback-filter-tabs button[aria-selected="true"] { background: #414141; color: #eee; }
+.feedback-board-actions [data-feedback-board-count], .feedback-board-actions [data-feedback-resolved-count] { color: #aaa; margin-left: 3px; }
 .feedback-board-actions button, .review-log-controls button { padding: 5px 10px; border-radius: 30px; color: #aaa; font-size: 11px; }
 .feedback-board-actions button:hover, .review-log-controls button:hover { color: #fff; }
 .feedback [data-feedback-load-status], .feedback [data-review-log-status] { padding: 3px 16px 7px; font-size: 11px; color: #999; }
@@ -121,10 +136,14 @@ body:has([data-feedback]) { padding-bottom: 48px; }
 .feedback .feedback-mini-note { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 9px; width: 100%; padding: 10px 9px; margin-bottom: 2px; border-left: 2.5px solid var(--user-color, var(--review-accent)); border-radius: 3px 8px 8px 3px; text-align: left; }
 .feedback .feedback-mini-note:hover { background: #ffffff08; }
 .feedback-mini-content { min-width: 0; }
-.feedback-mini-meta { display: flex; gap: 6px; align-items: baseline; }
+.feedback-mini-meta { display: flex; flex-wrap: wrap; gap: 5px; align-items: baseline; }
 .feedback-mini-author { color: var(--user-color, #e5e5e5); font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .feedback-mini-date { color: #8b8b8b; font-size: 10px; white-space: nowrap; }
 .feedback-mini-replies { margin-left: auto; flex: none; padding: 1px 6px; border-radius: 99px; background: #303030; color: #ccc; font-size: 10px; }
+.feedback-mini-badge { flex: none; padding: 1px 6px; border-radius: 99px; font-size: 10px; font-weight: 500; white-space: nowrap; }
+.feedback-mini-badge-unplaced { background: #3d2e28; color: #f5c2ad; }
+.feedback-mini-badge-changed { background: #383226; color: #f5d6a4; }
+.feedback-mini-badge-resolved { background: #273427; color: #b9d9a9; }
 .feedback-mini-body { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: #cacaca; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; margin-top: 2px; }
 .feedback-mini-latest-reply { display: block; margin-top: 4px; padding-left: 8px; border-left: 1.5px solid #ffffff24; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: #a8a8a8; }
 .feedback-mini-context { display: block; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: #818181; }
