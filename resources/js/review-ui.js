@@ -47,6 +47,31 @@ export function dateLocale() {
   return reviewConfig().i18n?.date_locale || 'en-GB';
 }
 
+export function relativeTime(value, now = Date.now()) {
+  const timestamp = value instanceof Date ? value.getTime() : Date.parse(value);
+  if (Number.isNaN(timestamp)) return '';
+  const diffSeconds = Math.max(0, Math.round((now - timestamp) / 1000));
+  if (diffSeconds < 45) {
+    const dict = reviewConfig().i18n || {};
+    return dict.just_now || (dateLocale().startsWith('nl') ? 'zojuist' : 'just now');
+  }
+  const locale = dateLocale();
+  try {
+    const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'always' });
+    const minutes = Math.round(diffSeconds / 60);
+    if (minutes < 60) return rtf.format(-minutes, 'minute');
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return rtf.format(-hours, 'hour');
+    const days = Math.round(hours / 24);
+    if (days < 30) return rtf.format(-days, 'day');
+    const months = Math.round(days / 30);
+    if (months < 12) return rtf.format(-months, 'month');
+    return rtf.format(-Math.round(days / 365), 'year');
+  } catch {
+    return new Date(timestamp).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' });
+  }
+}
+
 export function pageLabel(page) {
   const pages = reviewConfig().pages || {};
   return pages[page] || page;
@@ -101,8 +126,15 @@ export function rememberReviewer(name) {
   document.querySelectorAll('[data-review-people-toggle]').forEach(el => applyReviewerColor(el, trimmed));
   document.querySelectorAll('[data-review-avatar]').forEach(el => {
     el.textContent = initials(trimmed);
-    el.title = trimmed ? t('your_name_prefix', { name: trimmed }) : t('your_name');
+    if (!el.closest('button')?.querySelector('.review-tooltip')) {
+      el.title = trimmed ? t('your_name_prefix', { name: trimmed }) : t('your_name');
+    } else {
+      el.removeAttribute('title');
+    }
     applyReviewerColor(el, trimmed);
+  });
+  document.querySelectorAll('[data-review-self-tooltip]').forEach(el => {
+    el.textContent = trimmed ? `${trimmed}${t('you_suffix')}` : t('your_name');
   });
   document.querySelectorAll('[data-review-name-label]').forEach(el => {
     el.textContent = trimmed;
@@ -188,7 +220,8 @@ export function reviewMode(mode) {
 export function reviewBusy(busy) {
   document.querySelector('[data-feedback]').dataset.busy = String(busy);
   document.querySelectorAll('.feedback-toolbar button').forEach(el => {
-    el.disabled = busy || (document.querySelector('[data-feedback]').dataset.expired === 'true' && !el.hasAttribute('data-review-people-toggle'));
+    const isPeopleButton = el.hasAttribute('data-review-people-toggle') || el.hasAttribute('data-review-people-peer');
+    el.disabled = busy || (document.querySelector('[data-feedback]').dataset.expired === 'true' && !isPeopleButton);
   });
 }
 

@@ -134,10 +134,19 @@ export function initReviewCursors() {
         members = new Map(people.map(person => [person.id, person]));
         subscribed = true;
         updateStatus(t('cursors_active'));
+        document.dispatchEvent(new CustomEvent('review:presence', { detail: [...members.values()] }));
         send(true);
       })
-      .joining(person => { members.set(person.id, person); send(true); })
-      .leaving(person => { members.delete(person.id); remove(person.id); })
+      .joining(person => {
+        members.set(person.id, person);
+        document.dispatchEvent(new CustomEvent('review:presence', { detail: [...members.values()] }));
+        send(true);
+      })
+      .leaving(person => {
+        members.delete(person.id);
+        remove(person.id);
+        document.dispatchEvent(new CustomEvent('review:presence', { detail: [...members.values()] }));
+      })
       .listenForWhisper('cursor', receive)
       .error(() => { subscribed = false; clear(); updateStatus(t('cursors_reconnecting')); });
   }

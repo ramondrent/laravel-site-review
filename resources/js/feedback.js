@@ -1,4 +1,5 @@
 import { applyReviewerColor, dateLocale, initials, onReady, rememberReviewer, reviewBusy, reviewConfig, reviewerColor, reviewerName, reviewFetch, reviewMode, reviewToast, t, typing } from './review-ui';
+import { animateNewPin, animateNewThreadEntry, createCommentMorph, pinDirection } from './comment-morph';
 
 export function initFeedback() {
   onReady(() => {
@@ -43,12 +44,24 @@ export function initFeedback() {
     let editingNote = null;
     let editingRootNote = null;
     let active = null;
+    let stickyClosing = false;
+    let stickyBelowLock = null;
+    let lastStickyPlacement = null;
+    let newlySavedPinId = null;
     let returnFocus = launcher;
     let frame;
     let temporaryTargets = [];
     let notesVisible = true;
     let highlightedAnchor = null;
     const replyDrafts = new Map();
+    const pinDirections = new Map();
+    const isStickyOpen = () => !sticky.hidden && !stickyClosing;
+
+    const morph = createCommentMorph({
+      root,
+      sticky,
+      onSyncPins: () => syncPinExpandedStates(),
+    });
 
     try {
       const stored = localStorage.getItem('site-review-notes-visible') ?? localStorage.getItem('state-notes-visible');
@@ -158,8 +171,18 @@ export function initFeedback() {
           if (!el.hasAttribute('tabindex')) { el.tabIndex = 0; temporaryTargets.push(el); }
         });
         setBoard(false);
-        sticky.hidden = true;
-        if (!movingNote) active = null;
+        if (movingNote) {
+          morph.reset();
+          stickyClosing = false;
+          sticky.inert = false;
+          sticky.hidden = true;
+          stickyBelowLock = null;
+          lastStickyPlacement = null;
+        } else if (isStickyOpen()) {
+          closeSticky({ skipFocus: true });
+        } else {
+          active = null;
+        }
       }
     }
 
@@ -540,31 +563,139 @@ export function initFeedback() {
       return element;
     }
 
+    function syncPinExpandedStates() {
+      pins.querySelectorAll('button').forEach(pin => {
+        if (pin.dataset.draft) return;
+        const id = Number(pin.dataset.id);
+        const isActiveOpen = Boolean(id && active?.id === id && isStickyOpen() && !draft && !pin.hidden && notesVisible && !pins.hidden);
+        const isMorphing = Boolean(id && morph.isPinHiddenByMorph(id));
+        pin.classList.toggle('feedback-pin-expanded', isActiveOpen || isMorphing);
+        pin.setAttribute('aria-expanded', String(Boolean(id && active?.id === id && isStickyOpen())));
+      });
+    }
+
+    function pinLayoutFor(pin, point, key) {
+      const pinWidth = pin?.offsetWidth || 33;
+      const pinHeight = pin?.offsetHeight || 33;
+      const prevDir = key != null ? pinDirections.get(key) : null;
+      const dir = pinDirection(point, 48, prevDir);
+      if (key != null) pinDirections.set(key, dir);
+      const isLeft = dir.endsWith('left');
+      const isTop = dir.startsWith('top');
+      const styleLeft = isLeft
+        ? Math.max(6, Math.min(Math.max(6, innerWidth - pinWidth - 2), point.x))
+        : Math.max(Math.min(innerWidth - 6, pinWidth + 2), Math.min(innerWidth - 6, point.x));
+      const styleTop = isTop
+        ? Math.max(6, Math.min(Math.max(6, innerHeight - 48 - pinHeight), point.y))
+        : Math.max(pinHeight + 2, Math.min(Math.max(pinHeight + 2, innerHeight - 50), point.y));
+      const left = isLeft ? styleLeft - 2 : styleLeft - pinWidth + 2;
+      const top = isTop ? styleTop - 2 : styleTop - pinHeight + 2;
+      return {
+        dir,
+        isLeft,
+        isTop,
+        styleLeft,
+        styleTop,
+        left,
+        right: left + pinWidth,
+        top,
+        bottom: top + pinHeight,
+        width: pinWidth,
+        height: pinHeight,
+      };
+    }
+
     function positionSticky(point) {
       const width = sticky.offsetWidth;
       const height = sticky.offsetHeight;
       if (!point) {
         // Docked placement when viewing an unplaced or resolved comment without an active pin on screen
-        sticky.style.left = `${Math.max(16, innerWidth - width - 16)}px`;
-        sticky.style.top = `${Math.max(24, Math.min(innerHeight - height - 72, 88))}px`;
-        return;
+        const left = Math.max(16, innerWidth - width - 16);
+        const top = Math.max(24, Math.min(innerHeight - height - 72, 88));
+        sticky.dataset.tail = 'none';
+        sticky.style.left = `${left}px`;
+        sticky.style.top = `${top}px`;
+        const nextPlacement = { noteId: active?.id ?? null, left, top, width, height, spot: null, tail: 'none' };
+        morph.glideCard(lastStickyPlacement, nextPlacement);
+        lastStickyPlacement = nextPlacement;
+        return nextPlacement;
       }
-      const activePin = active?.id ? pins.querySelector(`[data-id="${active.id}"]`) : null;
-      const pinWidth = activePin?.offsetWidth || 33;
-      const right = point.x + pinWidth + 5;
-      const left = right + width < innerWidth - 16 ? right : point.x - width - 12;
-      sticky.style.left = `${Math.max(16, Math.min(innerWidth - width - 16, left))}px`;
-      sticky.style.top = `${Math.max(24, Math.min(innerHeight - height - 90, point.y - 42))}px`;
+
+      if (!active?.id) {
+        const draftPin = pins.querySelector('[data-draft="true"]');
+        const pinBox = pinLayoutFor(draftPin, point, 'draft');
+        const rightCandidate = pinBox.right + 6;
+        const leftCandidate = pinBox.left - width - 6;
+        const useRight = pinBox.isLeft
+          ? (rightCandidate + width <= innerWidth - 12 || leftCandidate < 12)
+          : (leftCandidate < 12 && rightCandidate + width <= innerWidth - 12);
+        const left = Math.max(12, Math.min(innerWidth - width - 12, useRight ? rightCandidate : leftCandidate));
+        const idealTop = pinBox.isTop ? pinBox.top : pinBox.bottom - height;
+        const top = Math.max(16, Math.min(innerHeight - height - 64, idealTop));
+        sticky.dataset.tail = 'none';
+        sticky.style.left = `${left}px`;
+        sticky.style.top = `${top}px`;
+        lastStickyPlacement = null;
+        return { noteId: null, left, top, width, height, spot: { x: point.x, y: point.y }, tail: 'none' };
+      }
+
+      const activePin = pins.querySelector(`[data-id="${active.id}"]`);
+      const pinBox = pinLayoutFor(activePin, point, active.id);
+      const pad = 12;
+      const bottomLimit = innerHeight - 48 - pad;
+
+      const fitsRight = pinBox.left + width <= innerWidth - pad;
+      const fitsLeft = pinBox.right - width >= pad;
+      const side = pinBox.isLeft
+        ? (fitsRight || !fitsLeft ? 'right' : 'left')
+        : (fitsLeft || !fitsRight ? 'left' : 'right');
+      const idealLeft = side === 'right' ? pinBox.left : pinBox.right - width;
+      const left = Math.max(pad, Math.min(Math.max(pad, innerWidth - width - pad), idealLeft));
+
+      let below;
+      if (stickyBelowLock?.id === active.id) {
+        below = stickyBelowLock.below;
+      } else {
+        const roomAbove = pinBox.bottom - pad;
+        const roomBelow = bottomLimit - pinBox.top;
+        below = pinBox.isTop;
+        if (!below && height > roomAbove && roomBelow > roomAbove) below = true;
+        else if (below && height > roomBelow && roomAbove >= height) below = false;
+        if (height > 0) stickyBelowLock = { id: active.id, below };
+      }
+
+      const idealTop = below ? pinBox.top : pinBox.bottom - height;
+      const top = Math.max(pad, Math.min(Math.max(pad, bottomLimit - height), idealTop));
+      const pinOnScreen = Boolean(activePin && !activePin.hidden && notesVisible && !pins.hidden);
+      const hasTail = pinOnScreen && Math.abs(left - idealLeft) <= 3 && Math.abs(top - idealTop) <= 3;
+      const tail = hasTail ? `${below ? 'top' : 'bottom'}-${side === 'right' ? 'left' : 'right'}` : 'none';
+
+      sticky.dataset.tail = tail;
+      sticky.style.left = `${left}px`;
+      sticky.style.top = `${top}px`;
+
+      const nextPlacement = {
+        noteId: active.id,
+        left,
+        top,
+        width,
+        height,
+        spot: { x: point.x, y: point.y },
+        tail,
+      };
+      morph.glideCard(lastStickyPlacement, nextPlacement);
+      lastStickyPlacement = nextPlacement;
+      return nextPlacement;
     }
 
-    function updatePositions() {
-      frame = null;
+    function updatePinPositionsOnly() {
       pins.querySelectorAll('button').forEach(pin => {
         if (dragging && Number(pin.dataset.id) === dragging.note.id) {
-          const pinWidth = pin.offsetWidth || 33;
+          const layout = pinLayoutFor(pin, dragging, `drag-${dragging.note.id}`);
           pin.hidden = false;
-          pin.style.left = `${Math.max(6, Math.min(innerWidth - pinWidth - 2, dragging.x))}px`;
-          pin.style.top = `${Math.max(6, Math.min(innerHeight - 50, dragging.y))}px`;
+          pin.dataset.point = layout.dir;
+          pin.style.left = `${layout.styleLeft}px`;
+          pin.style.top = `${layout.styleTop}px`;
           return;
         }
         const note = pin.dataset.draft ? draft : notes.find(item => item.id === Number(pin.dataset.id));
@@ -575,27 +706,103 @@ export function initFeedback() {
           pin.hidden = true;
           return;
         }
-        const pinWidth = pin.offsetWidth || 33;
+        const key = pin.dataset.draft ? 'draft' : note.id;
+        const layout = pinLayoutFor(pin, point, key);
         pin.classList.toggle('feedback-pin-changed', Boolean(resolution.changed));
-        pin.setAttribute('aria-expanded', String(note.id === active?.id && !sticky.hidden && !!note.id));
-        pin.hidden = point.y < 4 || point.y > innerHeight - 44 || point.x < -(pinWidth - 2) || point.x > innerWidth + 4 || clippedByScroller(point, point.element);
-        pin.style.left = `${Math.max(6, Math.min(innerWidth - pinWidth - 2, point.x))}px`;
-        pin.style.top = `${point.y}px`;
+        pin.hidden = point.y < 4 || point.y > innerHeight - 44 || point.x < -4 || point.x > innerWidth + 4 || clippedByScroller(point, point.element);
+        pin.dataset.point = layout.dir;
+        pin.style.left = `${layout.styleLeft}px`;
+        pin.style.top = `${layout.styleTop}px`;
       });
-      if (active && !sticky.hidden) positionSticky(pointFor(active));
+      syncPinExpandedStates();
+    }
+
+    function updatePositions() {
+      frame = null;
+      updatePinPositionsOnly();
+      const morphId = morph.morphNoteId();
+      if (morphId) {
+        const morphNote = notes.find(item => item.id === morphId);
+        const livePoint = morphNote ? pointFor(morphNote) : null;
+        morph.handleViewportSpotMove(livePoint);
+      }
+      if (active && isStickyOpen()) positionSticky(pointFor(active));
     }
 
     function schedulePositions() { if (!frame) frame = requestAnimationFrame(updatePositions); }
 
-    function closeSticky() {
-      if (saving) return;
+    function closeSticky(options = {}) {
+      const { instant = false, skipFocus = false, mode = 'pin', force = false } = options instanceof Event ? {} : options;
+      if (saving && !force) return;
       resetEditing();
-      sticky.hidden = true;
+      const closingNote = active?.id ? active : null;
+      const closingWasDraft = Boolean(draft && !active?.id);
+      const savedReturnFocus = returnFocus;
       active = null;
+      if (closingWasDraft) draft = null;
+      stickyBelowLock = null;
+      lastStickyPlacement = null;
       highlightedAnchor?.removeAttribute('data-review-comment-target');
       highlightedAnchor = null;
-      schedulePositions();
-      returnFocus?.focus({ preventScroll: true });
+
+      const focusTarget = (savedReturnFocus?.isConnected
+        ? savedReturnFocus
+        : (closingNote ? pins.querySelector(`[data-id="${closingNote.id}"]`) : null)) || toggle;
+      if (!skipFocus) {
+        focusTarget?.focus({ preventScroll: true });
+      }
+
+      if (sticky.hidden) {
+        morph.reset();
+        stickyClosing = false;
+        sticky.inert = false;
+        if (closingWasDraft) renderPins();
+        else schedulePositions();
+        return;
+      }
+
+      if (instant) {
+        morph.reset();
+        stickyClosing = false;
+        sticky.inert = false;
+        sticky.hidden = true;
+        if (closingWasDraft) renderPins();
+        else updatePositions();
+        return;
+      }
+
+      stickyClosing = true;
+      sticky.inert = true;
+      if (closingWasDraft) renderPins();
+
+      const finalizeClose = () => {
+        if (!stickyClosing) return;
+        stickyClosing = false;
+        sticky.inert = false;
+        sticky.hidden = true;
+        updatePositions();
+      };
+
+      if (closingNote && mode !== 'dismiss') {
+        if (!pins.querySelector(`[data-id="${closingNote.id}"]`)) {
+          renderPins();
+        } else {
+          updatePinPositionsOnly();
+        }
+        const targetPin = notesVisible && !pins.hidden ? pins.querySelector(`[data-id="${closingNote.id}"]`) : null;
+        const spot = pointFor(closingNote);
+        if (targetPin && !targetPin.hidden && spot) {
+          morph.closeToPin({
+            note: closingNote,
+            pin: targetPin,
+            spot: { x: spot.x, y: spot.y },
+            onFinish: finalizeClose,
+          });
+          return;
+        }
+      }
+
+      morph.closeDocked({ onFinish: finalizeClose });
     }
 
     async function parseSaveError(response) {
@@ -631,13 +838,11 @@ export function initFeedback() {
         saving = false;
         reviewBusy(false);
         if (resolved) {
-          if (active?.id === saved.id) {
-            sticky.hidden = true;
-            active = null;
-            highlightedAnchor?.removeAttribute('data-review-comment-target');
-            highlightedAnchor = null;
-          }
+          const wasActive = active?.id === saved.id;
           renderNotes();
+          if (wasActive) {
+            closeSticky({ force: true, skipFocus: true, mode: 'dismiss' });
+          }
           if (showUndo) {
             reviewToast(t('resolved_toast'), {
               actionLabel: t('undo_action'),
@@ -724,13 +929,10 @@ export function initFeedback() {
         if (item.id === rootNote.id) {
           replyDrafts.delete(rootNote.id);
           notes = notes.filter(note => note.id !== rootNote.id);
-          sticky.hidden = true;
-          active = null;
-          highlightedAnchor?.removeAttribute('data-review-comment-target');
-          highlightedAnchor = null;
           saving = false;
           reviewBusy(false);
           renderNotes();
+          closeSticky({ force: true, skipFocus: true, mode: 'dismiss' });
           toggle.focus({ preventScroll: true });
           reviewToast(t('comment_deleted_toast'));
         } else {
@@ -749,7 +951,7 @@ export function initFeedback() {
         submitButton.disabled = false;
         cancelButton.disabled = false;
         submitButton.textContent = t('delete_confirm_yes');
-        if (!sticky.hidden && active) positionSticky(pointFor(active));
+        if (isStickyOpen() && active) positionSticky(pointFor(active));
       }
     }
 
@@ -873,6 +1075,21 @@ export function initFeedback() {
     function openNote(note, source, jump = false, focusReply = false) {
       if (saving || root.dataset.busy === 'true') return;
       const rootNote = notes.find(item => item.id === note.id) || note;
+      const sourcePin = source?.classList?.contains('feedback-pin') ? source : null;
+      const initialPinRect = sourcePin && !sourcePin.hidden ? sourcePin.getBoundingClientRect() : null;
+      const wasSameNoteOpen = isStickyOpen() && active?.id === rootNote.id && !draft;
+
+      if (!wasSameNoteOpen) {
+        const previousId = active?.id || morph.morphNoteId();
+        if ((isStickyOpen() || stickyClosing) && previousId && previousId !== rootNote.id) {
+          morph.detachToCollapseGhost(id => (notesVisible && !pins.hidden ? pins.querySelector(`[data-id="${id}"]`) : null));
+        } else if (morph.morphNoteId() !== rootNote.id) {
+          morph.reset();
+        }
+        stickyBelowLock = null;
+        lastStickyPlacement = null;
+      }
+
       document.dispatchEvent(new Event('review:notes'));
       resetEditing();
       setPlacing(false);
@@ -883,7 +1100,10 @@ export function initFeedback() {
       highlightedAnchor = resolution.placed && resolution.element !== document.body ? (revealed || resolution.element) : null;
       document.documentElement.style.setProperty('--comment-target-color', reviewerColor(rootNote.name));
       highlightedAnchor?.setAttribute('data-review-comment-target', '');
+      draft = null;
       active = rootNote;
+      stickyClosing = false;
+      sticky.inert = false;
       returnFocus = source || toggle;
       applyReviewerColor(sticky, rootNote.name);
       applyReviewerColor(replyForm, reviewerName());
@@ -916,7 +1136,26 @@ export function initFeedback() {
       replyForm.elements.body.value = replyDrafts.get(rootNote.id) || '';
       replyForm.elements.body.setCustomValidity('');
       sticky.hidden = false;
-      positionSticky(pointFor(rootNote, resolution));
+
+      updatePinPositionsOnly();
+      const placement = positionSticky(pointFor(rootNote, resolution));
+
+      if (!wasSameNoteOpen) {
+        const targetPin = notesVisible && !pins.hidden ? pins.querySelector(`[data-id="${rootNote.id}"]`) : null;
+        if (targetPin && !targetPin.hidden && placement.spot) {
+          morph.openFromPin({
+            note: rootNote,
+            pin: targetPin,
+            initialPinRect: sourcePin === targetPin ? initialPinRect : null,
+            cardBox: placement,
+            spot: placement.spot,
+          });
+        } else {
+          morph.openDocked({ note: rootNote });
+        }
+      }
+
+      syncPinExpandedStates();
       schedulePositions();
       if (focusReply) {
         replyForm.elements.body.focus({ preventScroll: true });
@@ -927,10 +1166,14 @@ export function initFeedback() {
 
     function openEdit(item, rootNote) {
       if (saving || !item) return;
+      morph.finishIfActive();
       editingNote = item;
       editingRootNote = rootNote || notes.find(n => n.id === (item.parent_id || item.id)) || item;
       draft = null;
       active = editingRootNote;
+      stickyClosing = false;
+      sticky.inert = false;
+      sticky.hidden = false;
       applyReviewerColor(sticky, item.name);
       if (resolveButton) resolveButton.hidden = true;
       if (anchorNotice) anchorNotice.hidden = true;
@@ -951,11 +1194,21 @@ export function initFeedback() {
 
     function openDraft(context) {
       if (saving || root.dataset.busy === 'true') return;
+      const previousId = active?.id || morph.morphNoteId();
+      if ((isStickyOpen() || stickyClosing) && previousId) {
+        morph.detachToCollapseGhost(id => (notesVisible && !pins.hidden ? pins.querySelector(`[data-id="${id}"]`) : null));
+      } else {
+        morph.reset();
+      }
+      stickyBelowLock = null;
+      lastStickyPlacement = null;
       document.dispatchEvent(new Event('review:notes'));
       resetEditing();
       draft = context;
       setPlacing(false);
       active = draft;
+      stickyClosing = false;
+      sticky.inert = false;
       applyReviewerColor(sticky, reviewerName());
       highlightedAnchor?.removeAttribute('data-review-comment-target');
       const resolution = resolveNote(context);
@@ -973,7 +1226,9 @@ export function initFeedback() {
       $('[data-feedback-context]').textContent = contextLabel(context, resolution);
       sticky.hidden = false;
       renderPins();
-      positionSticky(pointFor(draft, resolution));
+      const point = pointFor(draft, resolution);
+      const placement = positionSticky(point);
+      morph.openDraft({ point, cardBox: placement });
       form.elements.body.focus({ preventScroll: true });
     }
 
@@ -1001,7 +1256,7 @@ export function initFeedback() {
           if (!dragging) {
             dragging = { note, x: moveEvent.clientX, y: moveEvent.clientY };
             pin.classList.add('feedback-pin-dragging');
-            if (!sticky.hidden && active?.id === note.id) sticky.hidden = true;
+            if (isStickyOpen() && active?.id === note.id) closeSticky({ instant: true, skipFocus: true });
             document.documentElement.style.setProperty('--comment-target-color', reviewerColor(note.name));
           }
           dragging.x = moveEvent.clientX;
@@ -1122,6 +1377,10 @@ export function initFeedback() {
           openNote(note, pin, false, placing && !movingNote);
         });
         pins.append(pin);
+        if (newlySavedPinId === note.id) {
+          newlySavedPinId = null;
+          requestAnimationFrame(() => animateNewPin(pin));
+        }
       });
       if (draft) {
         const pin = document.createElement('button');
@@ -1204,6 +1463,19 @@ export function initFeedback() {
         list.append(card);
       });
       void openThreadCount;
+      const authorSnapshots = new Map();
+      for (const note of notes) {
+        for (const entry of [note, ...(note.replies || [])]) {
+          const trimmedName = (entry.name || '').trim();
+          const key = trimmedName.toLowerCase();
+          if (!key) continue;
+          const prev = authorSnapshots.get(key);
+          if (!prev || String(entry.created_at) > String(prev.last_seen_at)) {
+            authorSnapshots.set(key, { name: trimmedName, last_seen_at: entry.created_at, page: location.pathname });
+          }
+        }
+      }
+      document.dispatchEvent(new CustomEvent('review:comment-authors', { detail: [...authorSnapshots.values()] }));
       renderPins();
     }
 
@@ -1239,7 +1511,7 @@ export function initFeedback() {
           if (active?.id) {
             const updatedActive = notes.find(note => note.id === active.id);
             if (!updatedActive) closeSticky();
-            else if (!sticky.hidden && !editingNote) openNote(updatedActive, returnFocus);
+            else if (isStickyOpen() && !editingNote) openNote(updatedActive, returnFocus);
           }
           renderNotes();
         }
@@ -1281,18 +1553,18 @@ export function initFeedback() {
     document.addEventListener('review:editing', () => {
       if (saving) return;
       setPlacing(false);
-      if (!sticky.hidden) closeSticky();
+      if (isStickyOpen()) closeSticky({ skipFocus: true });
       setBoard(false);
     });
     document.addEventListener('review:cursor', () => {
       if (saving) return;
       setPlacing(false);
-      if (!sticky.hidden) closeSticky();
+      if (isStickyOpen()) closeSticky({ skipFocus: true });
       setBoard(false);
     });
     $('[data-review-cursor]').addEventListener('click', () => document.dispatchEvent(new Event('review:cursor')));
     document.addEventListener('review:saved', () => {
-      if (active && !sticky.hidden) {
+      if (active && isStickyOpen()) {
         const res = resolveNote(active);
         $('[data-feedback-context]').textContent = contextLabel(active, res);
         updateStickyNotice(active, res);
@@ -1303,7 +1575,7 @@ export function initFeedback() {
       if (placing || draft) document.documentElement.style.setProperty('--comment-target-color', reviewerColor(reviewerName()));
       if (draft) { applyReviewerColor(sticky, reviewerName()); renderPins(); }
       applyReviewerColor(replyForm, reviewerName());
-      if (active?.id && !sticky.hidden && !editingNote) openNote(active, returnFocus);
+      if (active?.id && isStickyOpen() && !editingNote) openNote(active, returnFocus);
     });
     launcher.addEventListener('click', () => {
       if (saving) return;
@@ -1359,7 +1631,7 @@ export function initFeedback() {
         if (movingNote) moveNoteTo(movingNote, context);
         else openDraft(context);
       }
-      if (event.key === 'Escape' && (placing || !sticky.hidden || !board.hidden)) {
+      if (event.key === 'Escape' && (placing || isStickyOpen() || !board.hidden)) {
         event.preventDefault(); event.stopImmediatePropagation();
         if (movingNote && !saving) {
           const restore = movingNote;
@@ -1373,15 +1645,17 @@ export function initFeedback() {
           openNote(backTo, returnFocus);
           return;
         }
-        setPlacing(false); closeSticky(); setBoard(false);
+        setPlacing(false);
+        if (isStickyOpen()) closeSticky();
+        setBoard(false);
       }
     }, true);
-    $('[data-feedback-close]').addEventListener('click', closeSticky);
+    $('[data-feedback-close]').addEventListener('click', () => closeSticky());
     toggle.addEventListener('click', () => {
       if (saving) return;
       document.dispatchEvent(new Event('review:notes'));
       setPlacing(false);
-      if (!sticky.hidden) closeSticky();
+      if (isStickyOpen()) closeSticky({ skipFocus: true });
       setBoard(board.hidden);
     });
     $('[data-feedback-board-close]').addEventListener('click', () => { setBoard(false); toggle.focus(); });
@@ -1425,6 +1699,10 @@ export function initFeedback() {
         renderNotes();
         openNote(rootNote, returnFocus);
         thread.scrollTop = thread.scrollHeight;
+        const newestEntry = thread.lastElementChild;
+        if (newestEntry?.classList.contains('feedback-reply-entry')) {
+          animateNewThreadEntry(newestEntry);
+        }
         reviewToast(t('reply_added_toast'));
       } catch (error) {
         status.textContent = error instanceof FeedbackError ? error.message : t('save_error_network');
@@ -1434,7 +1712,7 @@ export function initFeedback() {
         submit.disabled = false;
         replyForm.elements.body.disabled = false;
         submit.setAttribute('aria-label', t('add_comment_aria'));
-        if (!sticky.hidden && active) positionSticky(pointFor(active));
+        if (isStickyOpen() && active) positionSticky(pointFor(active));
       }
     });
 
@@ -1490,14 +1768,14 @@ export function initFeedback() {
           saved.replies = saved.replies || [];
           notes.push(saved);
           notes.sort((a, b) => a.id - b.id);
+          newlySavedPinId = saved.id;
           draft = null;
           resetEditing();
-          highlightedAnchor?.removeAttribute('data-review-comment-target');
-          highlightedAnchor = null;
           form.elements.body.value = '';
-          sticky.hidden = true;
-          active = null;
+          saving = false;
+          reviewBusy(false);
           renderNotes();
+          closeSticky({ force: true, skipFocus: true, mode: 'dismiss' });
           launcher.focus({ preventScroll: true });
           reviewToast(t('comment_saved_toast'));
         }
@@ -1510,7 +1788,7 @@ export function initFeedback() {
         form.elements.body.disabled = false;
         editCancel.disabled = false;
         submit.setAttribute('aria-label', t('save_comment_aria'));
-        if (!sticky.hidden && active) positionSticky(pointFor(active));
+        if (isStickyOpen() && active) positionSticky(pointFor(active));
       }
     });
     applyVisibility();
