@@ -1,4 +1,206 @@
-import { applyReviewerColor, dateLocale, initials, onReady, pageLabel, relativeTime, rememberReviewer, reviewerName, reviewFetch, reviewToast, t } from './review-ui';
+import { applyReviewerColor, dateLocale, initials, onReady, pageLabel, relativeTime, rememberReviewer, reviewerColor, reviewerName, reviewFetch, reviewToast, t } from './review-ui';
+import { lerp, prefersReducedMotion, roundedRectPath, smoothstep, tonenEase } from './comment-morph';
+
+const UNLOCK_OPEN_DURATION = 240;
+const UNLOCK_CLOSE_DURATION = 190;
+
+function createUnlockMorph(access, launcher, dialog) {
+  const layer = document.createElement('div');
+  layer.className = 'feedback-morph-layer review-unlock-morph-layer';
+  layer.setAttribute('aria-hidden', 'true');
+  access.append(layer);
+
+  const launcherMark = launcher.querySelector('[data-review-launcher-mark]');
+  const dialogMark = dialog.querySelector('[data-review-dialog-mark]');
+  let activeCleanup = null;
+
+  function cancel() {
+    if (activeCleanup) activeCleanup();
+  }
+
+  function runMorph({ fromBox, toBox, fromMark, toMark, cardOrigin, opening, duration, onFinish }) {
+    const steps = Math.max(20, Math.ceil((duration * 160) / 1000));
+    const sampled = [];
+    for (let i = 0; i <= steps; i++) {
+      const p = tonenEase(i / steps);
+      sampled.push({
+        p,
+        box: {
+          x: lerp(fromBox.x, toBox.x, p),
+          y: lerp(fromBox.y, toBox.y, p),
+          w: lerp(fromBox.w, toBox.w, p),
+          h: lerp(fromBox.h, toBox.h, p),
+          radii: [0, 1, 2, 3].map(idx => lerp(fromBox.radii[idx], toBox.radii[idx], p)),
+        },
+        mark: fromMark && toMark ? {
+          x: lerp(fromMark.x, toMark.x, p),
+          y: lerp(fromMark.y, toMark.y, p),
+          w: lerp(fromMark.w, toMark.w, p),
+          h: lerp(fromMark.h, toMark.h, p),
+          r: lerp(fromMark.r, toMark.r, p),
+        } : null,
+      });
+    }
+
+    const minX = Math.floor(Math.min(fromBox.x, toBox.x)) - 2;
+    const minY = Math.floor(Math.min(fromBox.y, toBox.y)) - 2;
+    const maxX = Math.ceil(Math.max(fromBox.x + fromBox.w, toBox.x + toBox.w)) + 2;
+    const maxY = Math.ceil(Math.max(fromBox.y + fromBox.h, toBox.y + toBox.h)) + 2;
+    const origin = { x: minX, y: minY };
+
+    const elevation = document.createElement('div');
+    elevation.className = 'feedback-morph-elevation';
+    Object.assign(elevation.style, {
+      left: `${minX}px`,
+      top: `${minY}px`,
+      width: `${Math.max(1, maxX - minX)}px`,
+      height: `${Math.max(1, maxY - minY)}px`,
+    });
+
+    const skin = document.createElement('div');
+    skin.className = 'feedback-morph-skin review-unlock-morph-skin';
+    elevation.append(skin);
+    layer.append(elevation);
+
+    let traveller = null;
+    if (dialogMark && sampled[0].mark) {
+      traveller = dialogMark.cloneNode(true);
+      traveller.removeAttribute('data-review-dialog-mark');
+      traveller.className = 'review-unlock-mark review-unlock-traveller';
+      layer.append(traveller);
+    }
+
+    dialog.dataset.morphing = 'true';
+    if (dialogMark) dialogMark.style.visibility = 'hidden';
+    if (!opening) {
+      launcher.dataset.morphing = 'true';
+      if (launcherMark) launcherMark.style.visibility = 'hidden';
+    }
+
+    const timing = { duration, easing: 'linear', fill: 'forwards' };
+    const anims = [];
+
+    anims.push(skin.animate(
+      sampled.map(({ box }) => ({ clipPath: roundedRectPath(box, origin) })),
+      timing,
+    ));
+
+    if (traveller) {
+      anims.push(traveller.animate(
+        sampled.map(({ mark }) => ({
+          transform: `translate(${mark.x.toFixed(2)}px, ${mark.y.toFixed(2)}px)`,
+          width: `${mark.w.toFixed(2)}px`,
+          height: `${mark.h.toFixed(2)}px`,
+          borderRadius: `${mark.r.toFixed(2)}px`,
+        })),
+        timing,
+      ));
+    }
+
+    anims.push(dialog.animate(
+      sampled.map(({ p, box }) => ({
+        clipPath: roundedRectPath(box, cardOrigin),
+        opacity: opening ? smoothstep(0.32, 0.94, p) : 1 - smoothstep(0, 0.45, p),
+      })),
+      timing,
+    ));
+
+    if (!opening) {
+      anims.push(launcher.animate(
+        sampled.map(({ p }) => ({ opacity: smoothstep(0.48, 0.96, p) })),
+        timing,
+      ));
+    }
+
+    let done = false;
+    const cleanup = completed => {
+      if (done) return;
+      done = true;
+      activeCleanup = null;
+      for (const anim of anims) {
+        anim.onfinish = null;
+        anim.cancel();
+      }
+      elevation.remove();
+      traveller?.remove();
+      delete dialog.dataset.morphing;
+      dialog.style.clipPath = '';
+      dialog.style.opacity = '';
+      if (dialogMark) dialogMark.style.visibility = '';
+      delete launcher.dataset.morphing;
+      launcher.style.opacity = '';
+      launcher.style.visibility = '';
+      if (launcherMark) launcherMark.style.visibility = '';
+      if (completed) onFinish?.();
+    };
+
+    activeCleanup = () => cleanup(false);
+    anims[0].onfinish = () => cleanup(true);
+  }
+
+  return {
+    open() {
+      cancel();
+      if (prefersReducedMotion() || typeof launcher.animate !== 'function') {
+        launcher.hidden = true;
+        dialog.hidden = false;
+        return;
+      }
+      const pillRect = launcher.getBoundingClientRect();
+      const pillMarkRect = launcherMark?.getBoundingClientRect();
+      launcher.hidden = true;
+      dialog.hidden = false;
+      const cardRect = dialog.getBoundingClientRect();
+      const cardMarkRect = dialogMark?.getBoundingClientRect();
+      if (pillRect.width <= 0 || cardRect.width <= 0) return;
+
+      const pillR = pillRect.height / 2;
+      runMorph({
+        fromBox: { x: pillRect.left, y: pillRect.top, w: pillRect.width, h: pillRect.height, radii: [pillR, pillR, pillR, pillR] },
+        toBox: { x: cardRect.left, y: cardRect.top, w: cardRect.width, h: cardRect.height, radii: [18, 18, 18, 18] },
+        fromMark: pillMarkRect ? { x: pillMarkRect.left, y: pillMarkRect.top, w: pillMarkRect.width, h: pillMarkRect.height, r: pillMarkRect.height / 2 } : null,
+        toMark: cardMarkRect ? { x: cardMarkRect.left, y: cardMarkRect.top, w: cardMarkRect.width, h: cardMarkRect.height, r: 9 } : null,
+        cardOrigin: { x: cardRect.left, y: cardRect.top },
+        opening: true,
+        duration: UNLOCK_OPEN_DURATION,
+      });
+    },
+    close() {
+      cancel();
+      if (prefersReducedMotion() || typeof dialog.animate !== 'function') {
+        dialog.hidden = true;
+        launcher.hidden = false;
+        return;
+      }
+      const cardRect = dialog.getBoundingClientRect();
+      const cardMarkRect = dialogMark?.getBoundingClientRect();
+      launcher.hidden = false;
+      launcher.style.visibility = 'hidden';
+      const pillRect = launcher.getBoundingClientRect();
+      const pillMarkRect = launcherMark?.getBoundingClientRect();
+      launcher.style.visibility = '';
+      if (pillRect.width <= 0 || cardRect.width <= 0) {
+        dialog.hidden = true;
+        return;
+      }
+
+      const pillR = pillRect.height / 2;
+      runMorph({
+        fromBox: { x: cardRect.left, y: cardRect.top, w: cardRect.width, h: cardRect.height, radii: [18, 18, 18, 18] },
+        toBox: { x: pillRect.left, y: pillRect.top, w: pillRect.width, h: pillRect.height, radii: [pillR, pillR, pillR, pillR] },
+        fromMark: cardMarkRect ? { x: cardMarkRect.left, y: cardMarkRect.top, w: cardMarkRect.width, h: cardMarkRect.height, r: 9 } : null,
+        toMark: pillMarkRect ? { x: pillMarkRect.left, y: pillMarkRect.top, w: pillMarkRect.width, h: pillMarkRect.height, r: pillMarkRect.height / 2 } : null,
+        cardOrigin: { x: cardRect.left, y: cardRect.top },
+        opening: false,
+        duration: UNLOCK_CLOSE_DURATION,
+        onFinish: () => {
+          dialog.hidden = true;
+          launcher.hidden = false;
+        },
+      });
+    },
+  };
+}
 
 export function initReviewAccess() {
   onReady(() => {
@@ -6,19 +208,72 @@ export function initReviewAccess() {
   window.addEventListener('pageshow', event => { if (event.persisted) location.reload(); });
   const access = document.querySelector('[data-review-access]');
   if (access) {
+    const launcher = access.querySelector('[data-review-unlock]');
     const dialog = access.querySelector('[data-review-unlock-dialog]');
     const form = access.querySelector('form');
     const status = access.querySelector('[data-review-unlock-status]');
     const submit = form.querySelector('[type="submit"]');
+    const submitLabel = submit.querySelector('[data-review-submit-label]');
+    const defaultSubmitText = submitLabel ? submitLabel.textContent : '';
+    const nameInput = form.elements.name;
     const passwordInput = form.elements.password;
+    const nameBox = access.querySelector('[data-review-name-box]');
+    const passwordBox = access.querySelector('[data-review-password-box]');
+    const avatarEl = access.querySelector('[data-review-unlock-avatar]');
+    const avatarInitials = access.querySelector('[data-review-unlock-initials]');
     const passwordToggle = access.querySelector('[data-review-password-toggle]');
+    const morph = createUnlockMorph(access, launcher, dialog);
     let sending = false;
+    let isOpen = false;
+
+    try {
+      if (sessionStorage.getItem('site-review-just-locked') === '1') {
+        sessionStorage.removeItem('site-review-just-locked');
+        if (!prefersReducedMotion()) {
+          launcher.classList.add('review-unlock-launcher-entering');
+          launcher.addEventListener('animationend', () => launcher.classList.remove('review-unlock-launcher-entering'), { once: true });
+        }
+      }
+    } catch { /* Optional convenience. */ }
+
     try {
       if (localStorage.getItem('state-reviewer-name') === 'Deployment check') localStorage.removeItem('state-reviewer-name');
-      form.elements.name.value = localStorage.getItem('site-review-reviewer-name')
+      nameInput.value = localStorage.getItem('site-review-reviewer-name')
         || localStorage.getItem('state-reviewer-name')
         || '';
     } catch { /* Optional convenience. */ }
+
+    function syncNameIdentity() {
+      const trimmed = nameInput.value.trim();
+      if (!avatarEl || !avatarInitials) return;
+      if (!trimmed) {
+        avatarEl.classList.add('is-empty');
+        avatarEl.style.removeProperty('--user-color');
+        avatarInitials.textContent = '';
+        nameBox?.style.removeProperty('--field-accent');
+        return;
+      }
+      const color = reviewerColor(trimmed);
+      avatarEl.classList.remove('is-empty');
+      avatarEl.style.setProperty('--user-color', color);
+      avatarInitials.textContent = initials(trimmed);
+      nameBox?.style.setProperty('--field-accent', color);
+    }
+    syncNameIdentity();
+
+    nameInput.addEventListener('input', () => {
+      syncNameIdentity();
+      if (nameBox?.dataset.invalid) {
+        delete nameBox.dataset.invalid;
+        status.textContent = '';
+      }
+    });
+    passwordInput.addEventListener('input', () => {
+      if (passwordBox?.dataset.invalid) {
+        delete passwordBox.dataset.invalid;
+        status.textContent = '';
+      }
+    });
 
     function setPasswordVisible(visible) {
       if (!passwordToggle) return;
@@ -38,24 +293,97 @@ export function initReviewAccess() {
       try { passwordInput.setSelectionRange(end, end); } catch { /* Not needed on unsupported types. */ }
     });
 
-    access.querySelector('[data-review-unlock]').addEventListener('click', () => {
+    function openUnlock() {
+      if (isOpen) return;
+      isOpen = true;
       setPasswordVisible(false);
-      dialog.showModal();
-      const focusTarget = form.elements.name.value.trim() ? passwordInput : form.elements.name;
+      status.textContent = '';
+      if (nameBox) delete nameBox.dataset.invalid;
+      if (passwordBox) delete passwordBox.dataset.invalid;
+      syncNameIdentity();
+      launcher.setAttribute('aria-expanded', 'true');
+      morph.open();
+      const focusTarget = nameInput.value.trim() ? passwordInput : nameInput;
       focusTarget.focus({ preventScroll: true });
+    }
+
+    function closeUnlock({ restoreFocus = false } = {}) {
+      if (!isOpen || sending) return;
+      isOpen = false;
+      setPasswordVisible(false);
+      launcher.setAttribute('aria-expanded', 'false');
+      morph.close();
+      if (restoreFocus) launcher.focus({ preventScroll: true });
+    }
+
+    launcher.addEventListener('click', openUnlock);
+    access.querySelector('[data-review-unlock-close]').addEventListener('click', () => closeUnlock({ restoreFocus: true }));
+    document.addEventListener('pointerdown', event => {
+      if (!isOpen || sending || access.contains(event.target)) return;
+      closeUnlock({ restoreFocus: false });
     });
-    access.querySelector('[data-review-unlock-close]').addEventListener('click', () => {
-      if (!sending) { setPasswordVisible(false); dialog.close(); }
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && isOpen && !sending) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeUnlock({ restoreFocus: true });
+      }
     });
-    dialog.addEventListener('cancel', event => { if (sending) event.preventDefault(); });
-    dialog.addEventListener('close', () => setPasswordVisible(false));
+
+    function setSubmitting(busy) {
+      sending = busy;
+      submit.disabled = busy;
+      if (busy) {
+        submit.dataset.loading = 'true';
+        if (submitLabel) submitLabel.textContent = t('signing_in');
+      } else {
+        delete submit.dataset.loading;
+        if (submitLabel) submitLabel.textContent = defaultSubmitText;
+      }
+    }
+
+    function flagError(message, targetBox, targetInput, { select = false } = {}) {
+      status.textContent = message;
+      if (targetBox) {
+        targetBox.dataset.invalid = 'true';
+        if (!prefersReducedMotion() && typeof targetBox.animate === 'function') {
+          targetBox.animate(
+            [
+              { transform: 'translateX(0)' },
+              { transform: 'translateX(-5px)' },
+              { transform: 'translateX(4px)' },
+              { transform: 'translateX(-3px)' },
+              { transform: 'translateX(2px)' },
+              { transform: 'translateX(0)' },
+            ],
+            { duration: 280, easing: 'ease-out' },
+          );
+        }
+      }
+      if (targetInput) {
+        targetInput.focus({ preventScroll: true });
+        if (select) {
+          try { targetInput.select(); } catch { /* Optional */ }
+        }
+      }
+    }
+
     form.addEventListener('submit', async event => {
       event.preventDefault();
       if (sending) return;
-      sending = true;
-      submit.disabled = true;
-      status.textContent = t('signing_in');
-      const name = form.elements.name.value.trim();
+      const name = nameInput.value.trim();
+      if (!name) {
+        flagError(t('name_required'), nameBox, nameInput);
+        return;
+      }
+      if (!passwordInput.value) {
+        flagError(t('password_required'), passwordBox, passwordInput);
+        return;
+      }
+      status.textContent = '';
+      if (nameBox) delete nameBox.dataset.invalid;
+      if (passwordBox) delete passwordBox.dataset.invalid;
+      setSubmitting(true);
       const body = new FormData(form);
       body.set('name', name);
       body.set('page', location.pathname);
@@ -70,15 +398,27 @@ export function initReviewAccess() {
             404: t('error_404_disabled'),
             503: t('error_503_unconfigured'),
           };
-          throw new Error(messages[response.status] || (data.errors ? Object.values(data.errors).flat().join(' ') : data.message) || t('error_signin_failed'));
+          const errorMessage = messages[response.status]
+            || (data.errors ? Object.values(data.errors).flat().join(' ') : data.message)
+            || t('error_signin_failed');
+          const hasNameError = Boolean(data?.errors?.name);
+          const hasPasswordError = response.status === 422 && !hasNameError;
+          setSubmitting(false);
+          flagError(
+            errorMessage,
+            hasNameError ? nameBox : (hasPasswordError ? passwordBox : null),
+            hasNameError ? nameInput : (hasPasswordError ? passwordInput : null),
+            { select: hasPasswordError },
+          );
+          return;
         }
         rememberReviewer(name);
+        try { sessionStorage.setItem('site-review-just-unlocked', '1'); } catch { /* Optional */ }
         passwordInput.value = '';
         location.reload();
       } catch (error) {
-        status.textContent = error instanceof TypeError ? t('error_offline') : error.message;
-        sending = false;
-        submit.disabled = false;
+        setSubmitting(false);
+        flagError(error instanceof TypeError ? t('error_offline') : error.message, null, null);
       }
     });
     return;
@@ -86,6 +426,16 @@ export function initReviewAccess() {
 
   const root = document.querySelector('[data-feedback]');
   if (!root) return;
+  try {
+    if (sessionStorage.getItem('site-review-just-unlocked') === '1') {
+      sessionStorage.removeItem('site-review-just-unlocked');
+      const toolbar = root.querySelector('.feedback-toolbar');
+      if (toolbar && !prefersReducedMotion()) {
+        toolbar.classList.add('feedback-toolbar-entering');
+        toolbar.addEventListener('animationend', () => toolbar.classList.remove('feedback-toolbar-entering'), { once: true });
+      }
+    }
+  } catch { /* Optional */ }
   const $ = selector => root.querySelector(selector);
   const panel = $('[data-review-people]');
   const toggle = $('[data-review-people-toggle]');
@@ -440,6 +790,7 @@ export function initReviewAccess() {
       const response = await reviewFetch(root.dataset.lockUrl, { method: 'POST' });
       if (!response.ok) throw new Error();
       document.dispatchEvent(new Event('review:locking'));
+      try { sessionStorage.setItem('site-review-just-locked', '1'); } catch { /* Optional */ }
       location.reload();
     } catch {
       status.textContent = t('signout_failed');

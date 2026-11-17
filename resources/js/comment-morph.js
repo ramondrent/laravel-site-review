@@ -11,6 +11,8 @@ const DRAFT_OPEN_DURATION = 175;
 const GLIDE_DURATION = 240;
 const GLIDE_ANIM_ID = 'site-review-glide';
 const BEZIER_KAPPA = 0.5522847498307936;
+const RESOLVED_PIN_OPACITY = 0.48;
+const RESOLVED_PIN_SATURATE = 0.75;
 
 function createCubicBezier(x1, y1, x2, y2) {
   const sample = (a, b, t) => (((1 - 3 * b + 3 * a) * t + (3 * b - 6 * a)) * t + 3 * a) * t;
@@ -38,11 +40,11 @@ function createCubicBezier(x1, y1, x2, y2) {
   };
 }
 
-const tonenEase = createCubicBezier(0.32, 0.72, 0, 1);
+export const tonenEase = createCubicBezier(0.32, 0.72, 0, 1);
 
-const clamp = (value, min = 0, max = 1) => Math.max(min, Math.min(max, value));
-const lerp = (a, b, t) => a + (b - a) * t;
-const smoothstep = (edge0, edge1, x) => {
+export const clamp = (value, min = 0, max = 1) => Math.max(min, Math.min(max, value));
+export const lerp = (a, b, t) => a + (b - a) * t;
+export const smoothstep = (edge0, edge1, x) => {
   const r = clamp((x - edge0) / (edge1 - edge0));
   return r * r * (3 - 2 * r);
 };
@@ -61,7 +63,7 @@ export function tailRadii(tail) {
   }
 }
 
-function roundedRectPath(box, origin = { x: 0, y: 0 }) {
+export function roundedRectPath(box, origin = { x: 0, y: 0 }) {
   const maxR = Math.max(0, Math.min(box.w, box.h) / 2);
   const tl = clamp(box.radii[0], 0, maxR);
   const tr = clamp(box.radii[1], 0, maxR);
@@ -95,7 +97,7 @@ export function pinDirection(point, toolbarInset = 48, prevDir = null) {
     : (isLeft ? 'bottom-left' : 'bottom-right');
 }
 
-function measurePinState(pin, note, { resting = false, initialRect = null } = {}) {
+function measurePinState(pin, note, { resting = false, initialRect = null, initialOpacity = null } = {}) {
   const offsetW = pin.offsetWidth || 33;
   const offsetH = pin.offsetHeight || 33;
   const dir = pin.dataset.point || 'bottom-left';
@@ -147,8 +149,20 @@ function measurePinState(pin, note, { resting = false, initialRect = null } = {}
   outerRadii[tipIndex] = 5 * scale;
   const innerRadii = [innerR, innerR, innerR, innerR];
   innerRadii[tipIndex] = Math.max(2, 5 * scale - border);
-  const isThread = pin.classList.contains('feedback-pin-thread');
+  const isResolvedPin = pin.classList.contains('feedback-pin-resolved');
+  const isThread = pin.classList.contains('feedback-pin-thread') || isResolvedPin;
   const pinBgImage = pin.style.background?.includes('gradient') ? pin.style.background : '';
+  const focusedOrActive = pin.matches?.(':focus-visible');
+  let surfaceAlpha = 1;
+  let surfaceSat = 1;
+  if (resting) {
+    surfaceAlpha = isResolvedPin && !focusedOrActive ? RESOLVED_PIN_OPACITY : 1;
+    surfaceSat = isResolvedPin && !focusedOrActive ? RESOLVED_PIN_SATURATE : 1;
+  } else {
+    const rawOpacity = initialOpacity ?? Number.parseFloat(getComputedStyle(pin).opacity);
+    surfaceAlpha = Number.isFinite(rawOpacity) ? clamp(rawOpacity, 0.1, 1) : (isResolvedPin ? RESOLVED_PIN_OPACITY : 1);
+    surfaceSat = isResolvedPin && surfaceAlpha < 0.95 ? RESOLVED_PIN_SATURATE : 1;
+  }
 
   return {
     state: {
@@ -159,6 +173,8 @@ function measurePinState(pin, note, { resting = false, initialRect = null } = {}
       radii: outerRadii,
       bgMix: 0,
       content: 0,
+      surfaceAlpha,
+      surfaceSat,
       avatar: {
         x: outer.x + border,
         y: outer.y + border,
@@ -229,6 +245,8 @@ function measureCardState(sticky, cardBox, fallbackAvatar) {
       radii,
       bgMix: 1,
       content: 1,
+      surfaceAlpha: 1,
+      surfaceSat: 1,
       avatar,
     },
     rootAvatar: visibleRootAvatar,
@@ -244,6 +262,8 @@ function interpolatePair(a, b, t) {
     radii: [0, 1, 2, 3].map(i => lerp(a.radii[i], b.radii[i], t)),
     bgMix: lerp(a.bgMix, b.bgMix, t),
     content: lerp(a.content, b.content, t),
+    surfaceAlpha: lerp(a.surfaceAlpha ?? 1, b.surfaceAlpha ?? 1, t),
+    surfaceSat: lerp(a.surfaceSat ?? 1, b.surfaceSat ?? 1, t),
     avatar: {
       x: lerp(a.avatar.x, b.avatar.x, t),
       y: lerp(a.avatar.y, b.avatar.y, t),
@@ -303,6 +323,8 @@ function buildMorphStates(from, to, isOpening, duration, refCard) {
       radii: [0, 1, 2, 3].map(idx => lerp(from.radii[idx], to.radii[idx], t)),
       bgMix: lerp(from.bgMix, to.bgMix, t),
       content,
+      surfaceAlpha: lerp(from.surfaceAlpha ?? 1, to.surfaceAlpha ?? 1, t),
+      surfaceSat: lerp(from.surfaceSat ?? 1, to.surfaceSat ?? 1, t),
       avatar: {
         x: lerp(from.avatar.x, to.avatar.x, t),
         y: lerp(from.avatar.y, to.avatar.y, t),
@@ -374,7 +396,10 @@ function runMorphSurface(layer, { states, duration, visual, refCard, stickyEl, r
 
   traveller.append(avatarLabel);
   if (pinLabel) traveller.append(pinLabel);
-  layer.append(elevation, traveller);
+  const group = document.createElement('div');
+  group.className = 'feedback-morph-group';
+  group.append(elevation, traveller);
+  layer.append(group);
 
   if (stickyEl) {
     stickyEl.dataset.morphing = 'true';
@@ -385,6 +410,16 @@ function runMorphSurface(layer, { states, duration, visual, refCard, stickyEl, r
 
   const timing = { duration, easing: 'linear', fill: 'forwards' };
   const anims = [];
+
+  if (states.some(s => (s.surfaceAlpha ?? 1) < 0.999 || (s.surfaceSat ?? 1) < 0.999)) {
+    anims.push(group.animate(
+      states.map(s => ({
+        opacity: s.surfaceAlpha ?? 1,
+        filter: (s.surfaceSat ?? 1) < 0.999 ? `saturate(${(s.surfaceSat ?? 1).toFixed(3)})` : 'none',
+      })),
+      timing,
+    ));
+  }
 
   anims.push(skin.animate(
     states.map(s => {
@@ -453,8 +488,7 @@ function runMorphSurface(layer, { states, duration, visual, refCard, stickyEl, r
       anim.onfinish = null;
       anim.cancel();
     }
-    elevation.remove();
-    traveller.remove();
+    group.remove();
     if (rootAvatar) rootAvatar.style.visibility = '';
     if (stickyEl) {
       delete stickyEl.dataset.morphing;
@@ -590,7 +624,7 @@ export function createCommentMorph({ root, sticky, onSyncPins }) {
     onSyncPins?.();
   }
 
-  function openFromPin({ note, pin, initialPinRect = null, cardBox, spot }) {
+  function openFromPin({ note, pin, initialPinRect = null, initialPinOpacity = null, cardBox, spot }) {
     finishGlide();
     let fromState = null;
     let visual = null;
@@ -614,7 +648,7 @@ export function createCommentMorph({ root, sticky, onSyncPins }) {
 
     if (!pin || pin.hidden || prefersReducedMotion()) {
       if (pin && !pin.hidden) {
-        const pinMeasured = measurePinState(pin, note, { initialRect: initialPinRect });
+        const pinMeasured = measurePinState(pin, note, { initialRect: initialPinRect, initialOpacity: initialPinOpacity });
         settledOpen = { note, visual: pinMeasured.visual, spot };
       }
       if (prefersReducedMotion() && !sticky.hidden) {
@@ -640,7 +674,7 @@ export function createCommentMorph({ root, sticky, onSyncPins }) {
       return;
     }
 
-    const pinMeasured = measurePinState(pin, note, { initialRect: initialPinRect });
+    const pinMeasured = measurePinState(pin, note, { initialRect: initialPinRect, initialOpacity: initialPinOpacity });
     if (!fromState) fromState = pinMeasured.state;
     visual = pinMeasured.visual || visual;
 

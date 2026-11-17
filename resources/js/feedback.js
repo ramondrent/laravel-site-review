@@ -10,8 +10,11 @@ export function initFeedback() {
     const sticky = $('[data-feedback-sticky]');
     const resolveButton = $('[data-feedback-resolve]');
     const resolveLabel = $('[data-feedback-resolve-label]');
+    const resolveIconCheck = $('[data-resolve-icon-check]');
+    const resolveIconReopen = $('[data-resolve-icon-reopen]');
     const anchorNotice = $('[data-feedback-anchor-notice]');
     const anchorNoticeText = $('[data-feedback-anchor-notice-text]');
+    const noticeCheck = $('[data-feedback-notice-check]');
     const moveButton = $('[data-feedback-move]');
     const form = $('[data-feedback-form]');
     const editCancel = $('[data-feedback-edit-cancel]');
@@ -22,6 +25,8 @@ export function initFeedback() {
     const board = $('#feedback-board');
     const toggle = $('.feedback-notes-toggle');
     const visibilityToggle = $('[data-feedback-visibility]');
+    const resolvedVisibilityToggle = $('[data-feedback-resolved-visibility]');
+    const resolvedVisibilityRow = $('[data-feedback-resolved-visibility-row]');
     const list = $('[data-feedback-list]');
     const pins = $('[data-feedback-pins]');
     const hint = $('[data-feedback-hint]');
@@ -52,6 +57,7 @@ export function initFeedback() {
     let frame;
     let temporaryTargets = [];
     let notesVisible = true;
+    let resolvedPinsVisible = true;
     let highlightedAnchor = null;
     const replyDrafts = new Map();
     const pinDirections = new Map();
@@ -66,6 +72,8 @@ export function initFeedback() {
     try {
       const stored = localStorage.getItem('site-review-notes-visible') ?? localStorage.getItem('state-notes-visible');
       notesVisible = stored !== 'false';
+      const storedResolved = localStorage.getItem('site-review-resolved-visible');
+      resolvedPinsVisible = storedResolved !== 'false';
     } catch { /* Storage is optional. */ }
     rememberReviewer(reviewerName());
 
@@ -97,6 +105,17 @@ export function initFeedback() {
 
     function isResolved(note) {
       return Boolean(note?.resolved_at);
+    }
+
+    function createCheckSvg(className) {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.setAttribute('aria-hidden', 'true');
+      if (className) svg.setAttribute('class', className);
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', 'M20 6 9 17l-5-5');
+      svg.append(path);
+      return svg;
     }
 
     function shortInitial(name) {
@@ -135,6 +154,11 @@ export function initFeedback() {
 
     function applyVisibility() {
       visibilityToggle.setAttribute('aria-checked', String(notesVisible));
+      if (resolvedVisibilityToggle) {
+        resolvedVisibilityToggle.setAttribute('aria-checked', String(resolvedPinsVisible));
+        resolvedVisibilityToggle.disabled = !notesVisible;
+      }
+      resolvedVisibilityRow?.classList.toggle('is-disabled', !notesVisible);
       pins.hidden = !notesVisible;
       if (notesVisible) schedulePositions();
     }
@@ -708,7 +732,7 @@ export function initFeedback() {
         }
         const key = pin.dataset.draft ? 'draft' : note.id;
         const layout = pinLayoutFor(pin, point, key);
-        pin.classList.toggle('feedback-pin-changed', Boolean(resolution.changed));
+        pin.classList.toggle('feedback-pin-changed', Boolean(resolution.changed && !isResolved(note)));
         pin.hidden = point.y < 4 || point.y > innerHeight - 44 || point.x < -4 || point.x > innerWidth + 4 || clippedByScroller(point, point.element);
         pin.dataset.point = layout.dir;
         pin.style.left = `${layout.styleLeft}px`;
@@ -839,9 +863,10 @@ export function initFeedback() {
         reviewBusy(false);
         if (resolved) {
           const wasActive = active?.id === saved.id;
+          if (wasActive) active = saved;
           renderNotes();
           if (wasActive) {
-            closeSticky({ force: true, skipFocus: true, mode: 'dismiss' });
+            closeSticky({ force: true, skipFocus: true });
           }
           if (showUndo) {
             reviewToast(t('resolved_toast'), {
@@ -854,7 +879,8 @@ export function initFeedback() {
           }
         } else {
           renderNotes();
-          openNote(saved, returnFocus, true);
+          const pin = pins.querySelector(`[data-id="${saved.id}"]`);
+          openNote(saved, pin || returnFocus, !pointFor(saved));
           reviewToast(t('reopened_toast'));
         }
       } catch (error) {
@@ -1049,8 +1075,12 @@ export function initFeedback() {
     function updateStickyNotice(rootNote, resolution) {
       if (!anchorNotice || !anchorNoticeText || !moveButton) return;
       const resolved = isResolved(rootNote);
+      anchorNotice.classList.toggle('is-resolved', resolved);
+      if (noticeCheck) noticeCheck.hidden = !resolved;
       if (resolved) {
-        anchorNoticeText.textContent = t('resolved_detail');
+        anchorNoticeText.textContent = rootNote.resolved_by
+          ? t('resolved_by_detail', { name: rootNote.resolved_by })
+          : t('resolved_detail');
         moveButton.hidden = true;
         anchorNotice.hidden = false;
         return;
@@ -1077,6 +1107,7 @@ export function initFeedback() {
       const rootNote = notes.find(item => item.id === note.id) || note;
       const sourcePin = source?.classList?.contains('feedback-pin') ? source : null;
       const initialPinRect = sourcePin && !sourcePin.hidden ? sourcePin.getBoundingClientRect() : null;
+      const initialPinOpacity = sourcePin && !sourcePin.hidden ? Number.parseFloat(getComputedStyle(sourcePin).opacity) : null;
       const wasSameNoteOpen = isStickyOpen() && active?.id === rootNote.id && !draft;
 
       if (!wasSameNoteOpen) {
@@ -1105,6 +1136,8 @@ export function initFeedback() {
       stickyClosing = false;
       sticky.inert = false;
       returnFocus = source || toggle;
+      const resolved = isResolved(rootNote);
+      sticky.classList.toggle('is-resolved', resolved);
       applyReviewerColor(sticky, rootNote.name);
       applyReviewerColor(replyForm, reviewerName());
       form.hidden = true;
@@ -1112,9 +1145,10 @@ export function initFeedback() {
       status.textContent = '';
 
       if (resolveButton && resolveLabel) {
-        const resolved = isResolved(rootNote);
         resolveButton.hidden = false;
         resolveButton.classList.toggle('is-resolved', resolved);
+        if (resolveIconCheck) resolveIconCheck.hidden = resolved;
+        if (resolveIconReopen) resolveIconReopen.hidden = !resolved;
         resolveLabel.textContent = resolved ? t('reopen_action') : t('resolve_action');
         resolveButton.title = resolved ? t('reopen_action') : t('resolve_action');
       }
@@ -1147,6 +1181,7 @@ export function initFeedback() {
             note: rootNote,
             pin: targetPin,
             initialPinRect: sourcePin === targetPin ? initialPinRect : null,
+            initialPinOpacity: sourcePin === targetPin ? initialPinOpacity : null,
             cardBox: placement,
             spot: placement.spot,
           });
@@ -1174,6 +1209,7 @@ export function initFeedback() {
       stickyClosing = false;
       sticky.inert = false;
       sticky.hidden = false;
+      sticky.classList.remove('is-resolved');
       applyReviewerColor(sticky, item.name);
       if (resolveButton) resolveButton.hidden = true;
       if (anchorNotice) anchorNotice.hidden = true;
@@ -1209,6 +1245,7 @@ export function initFeedback() {
       active = draft;
       stickyClosing = false;
       sticky.inert = false;
+      sticky.classList.remove('is-resolved');
       applyReviewerColor(sticky, reviewerName());
       highlightedAnchor?.removeAttribute('data-review-comment-target');
       const resolution = resolveNote(context);
@@ -1313,19 +1350,35 @@ export function initFeedback() {
     function renderPins() {
       pins.replaceChildren();
       const openNotes = notes.filter(note => !isResolved(note));
-      openNotes.forEach((note, index) => {
+      const resolvedNotes = resolvedPinsVisible ? notes.filter(note => isResolved(note)) : [];
+      const shownNotes = [
+        ...resolvedNotes.map((note, index) => ({ note, index, resolved: true })),
+        ...openNotes.map((note, index) => ({ note, index, resolved: false })),
+      ];
+      shownNotes.forEach(({ note, index, resolved }) => {
         const resolution = resolveNote(note);
         if (!resolution.placed) return;
 
         const pin = document.createElement('button');
         pin.type = 'button';
         pin.className = 'feedback-pin';
-        if (resolution.changed) pin.classList.add('feedback-pin-changed');
+        if (resolved) pin.classList.add('feedback-pin-resolved');
+        else if (resolution.changed) pin.classList.add('feedback-pin-changed');
         pin.dataset.id = note.id;
         applyReviewerColor(pin, note.name);
         const replyCount = note.replies?.length || 0;
         const participants = threadParticipants(note);
-        if (participants.length >= 2) {
+        if (resolved) {
+          const label = document.createElement('span');
+          label.textContent = initials(note.name);
+          pin.append(createCheckSvg('feedback-pin-check'), label);
+          if (participants.length >= 2) {
+            const colors = participants.slice(0, 3).map(name => reviewerColor(name));
+            pin.style.background = colors.length === 2
+              ? `linear-gradient(105deg, ${colors[0]} 0% 42%, ${colors[1]} 58% 100%)`
+              : `linear-gradient(105deg, ${colors[0]} 0% 28%, ${colors[1]} 50%, ${colors[2]} 72% 100%)`;
+          }
+        } else if (participants.length >= 2) {
           pin.classList.add('feedback-pin-thread');
           const shown = participants.length <= 3 ? participants : participants.slice(0, 2);
           shown.forEach((participant, idx) => {
@@ -1363,18 +1416,19 @@ export function initFeedback() {
           pin.textContent = initials(note.name);
         }
         const namesLabel = participants.join(' + ');
-        const changedSuffix = resolution.changed ? t('pin_changed_suffix') : '';
+        const suffix = resolved
+          ? t('pin_resolved_suffix')
+          : (resolution.changed ? t('pin_changed_suffix') : '');
         const aria = (replyCount
           ? t('pin_open_thread', { index: index + 1, names: namesLabel, count: 1 + replyCount, preview: note.body.slice(0, 80) })
-          : t('pin_open_single', { index: index + 1, name: note.name, preview: note.body.slice(0, 80) })) + changedSuffix;
+          : t('pin_open_single', { index: index + 1, name: note.name, preview: note.body.slice(0, 80) })) + suffix;
         pin.setAttribute('aria-label', aria);
-        pin.title = replyCount
-          ? `${namesLabel}: ${note.body.slice(0, 100)}`
-          : `${note.name}: ${note.body.slice(0, 100)}`;
-        bindPinDrag(pin, note);
+        const titlePrefix = resolved ? '✓ ' : '';
+        pin.title = `${titlePrefix}${replyCount ? namesLabel : note.name}: ${note.body.slice(0, 100)}`;
+        if (!resolved) bindPinDrag(pin, note);
         pin.addEventListener('click', () => {
           if (suppressPinClick) return;
-          openNote(note, pin, false, placing && !movingNote);
+          openNote(note, pin, false, !resolved && placing && !movingNote);
         });
         pins.append(pin);
         if (newlySavedPinId === note.id) {
@@ -1431,9 +1485,10 @@ export function initFeedback() {
       const locale = dateLocale();
       [...shownNotes].sort((a, b) => latestActivityId(b) - latestActivityId(a)).forEach(note => {
         const resolution = resolveNote(note);
+        const resolved = isResolved(note);
         const card = document.createElement('button');
         card.type = 'button';
-        card.className = 'feedback-mini-note';
+        card.className = resolved ? 'feedback-mini-note feedback-mini-note-resolved' : 'feedback-mini-note';
         applyReviewerColor(card, note.name);
         const content = element('feedback-mini-content', '');
         const meta = element('feedback-mini-meta', '');
@@ -1445,8 +1500,10 @@ export function initFeedback() {
         if (replyCount > 0) {
           meta.append(element('feedback-mini-replies', `${replyCount} ${replyCount === 1 ? t('reply_singular') : t('reply_plural')}`));
         }
-        if (isResolved(note)) {
-          meta.append(element('feedback-mini-badge feedback-mini-badge-resolved', t('resolved_badge')));
+        if (resolved) {
+          const badge = element('feedback-mini-badge feedback-mini-badge-resolved', '');
+          badge.append(createCheckSvg('feedback-mini-badge-check'), document.createTextNode(t('resolved_badge')));
+          meta.append(badge);
         } else if (!resolution.placed) {
           meta.append(element('feedback-mini-badge feedback-mini-badge-unplaced', t('not_placed_badge')));
         } else if (resolution.changed) {
@@ -1549,6 +1606,12 @@ export function initFeedback() {
       notesVisible = !notesVisible;
       try { localStorage.setItem('site-review-notes-visible', String(notesVisible)); } catch { /* Storage is optional. */ }
       applyVisibility();
+    });
+    resolvedVisibilityToggle?.addEventListener('click', () => {
+      resolvedPinsVisible = !resolvedPinsVisible;
+      try { localStorage.setItem('site-review-resolved-visible', String(resolvedPinsVisible)); } catch { /* Storage is optional. */ }
+      applyVisibility();
+      renderPins();
     });
     document.addEventListener('review:editing', () => {
       if (saving) return;

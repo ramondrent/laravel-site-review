@@ -19,9 +19,9 @@
   </div>
   <div class="feedback-pins" data-feedback-pins></div>
   <section class="feedback-sticky" data-feedback-sticky role="dialog" aria-labelledby="feedback-sticky-title" hidden>
-    <header class="feedback-sticky-header"><span id="feedback-sticky-title">{{ $review->trans('ui.sticky_title') }}</span><div class="feedback-sticky-header-actions"><button type="button" class="feedback-resolve-button" data-feedback-resolve hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span data-feedback-resolve-label>{{ $review->trans('ui.resolve_action') }}</span></button><button type="button" class="review-icon-button" data-feedback-close aria-label="{{ $review->trans('ui.sticky_close') }}">×</button></div></header>
+    <header class="feedback-sticky-header"><span id="feedback-sticky-title">{{ $review->trans('ui.sticky_title') }}</span><div class="feedback-sticky-header-actions"><button type="button" class="feedback-resolve-button" data-feedback-resolve hidden><svg data-resolve-icon-check viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><svg data-resolve-icon-reopen hidden viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg><span data-feedback-resolve-label>{{ $review->trans('ui.resolve_action') }}</span></button><button type="button" class="review-icon-button" data-feedback-close aria-label="{{ $review->trans('ui.sticky_close') }}">×</button></div></header>
     <p class="review-anchor-label" data-feedback-context></p>
-    <div class="feedback-anchor-notice" data-feedback-anchor-notice hidden><p data-feedback-anchor-notice-text></p><button type="button" class="feedback-move-button" data-feedback-move hidden>{{ $review->trans('ui.move_here_action') }}</button></div>
+    <div class="feedback-anchor-notice" data-feedback-anchor-notice hidden><svg class="feedback-notice-check" data-feedback-notice-check hidden viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><p data-feedback-anchor-notice-text></p><button type="button" class="feedback-move-button" data-feedback-move hidden>{{ $review->trans('ui.move_here_action') }}</button></div>
     <form data-feedback-form>
       @csrf
       <label class="feedback-sr-only" for="feedback-body">{{ $review->trans('ui.comment_label') }}</label>
@@ -43,7 +43,10 @@
     <div class="feedback-board-actions"><div class="feedback-filter-tabs" role="tablist"><button type="button" role="tab" aria-selected="true" data-feedback-filter="open">{{ $review->trans('ui.filter_open') }} <span data-feedback-board-count>0</span></button><button type="button" role="tab" aria-selected="false" data-feedback-filter="resolved">{{ $review->trans('ui.filter_resolved') }} <span data-feedback-resolved-count>0</span></button></div><button type="button" data-feedback-refresh>{{ $review->trans('ui.refresh') }}</button></div>
     <p data-feedback-load-status role="status" aria-live="polite"></p>
     <div class="feedback-board-list" data-feedback-list></div>
-    <footer class="review-panel-footer"><span>{{ $review->trans('ui.show_pins') }} <kbd>⇧ C</kbd></span><button class="feedback-visibility-toggle" type="button" data-feedback-visibility role="switch" aria-checked="true" aria-label="{{ $review->trans('ui.show_pins') }}"><span></span></button></footer>
+    <footer class="review-panel-footer feedback-board-footer">
+      <div class="feedback-footer-row"><span>{{ $review->trans('ui.show_pins') }} <kbd>⇧ C</kbd></span><button class="feedback-visibility-toggle" type="button" data-feedback-visibility role="switch" aria-checked="true" aria-label="{{ $review->trans('ui.show_pins') }}"><span></span></button></div>
+      <div class="feedback-footer-row" data-feedback-resolved-visibility-row><span>{{ $review->trans('ui.show_resolved_pins') }}</span><button class="feedback-visibility-toggle" type="button" data-feedback-resolved-visibility role="switch" aria-checked="true" aria-label="{{ $review->trans('ui.show_resolved_pins') }}"><span></span></button></div>
+    </footer>
   </section>
   <div class="feedback-toast" data-feedback-toast role="status" aria-live="polite" hidden></div>
   @include('site-review::partials.text-review', ['review' => $review, 'reviewSession' => $reviewSession])
