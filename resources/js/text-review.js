@@ -254,6 +254,16 @@ export function initTextReview() {
         comment_reopened: t('kind_comment_reopened'),
         comment_deleted: t('kind_comment_deleted'),
       };
+      const diffMeta = {
+        text_updated: { before: [t('diff_before'), 'before'], after: [t('diff_after'), 'after'] },
+        comment_created: { after: [t('diff_comment'), 'note'] },
+        comment_replied: { after: [t('diff_reply'), 'note'] },
+        comment_updated: { before: [t('diff_comment_before'), 'before'], after: [t('diff_comment_after'), 'after'] },
+        comment_moved: { before: [t('diff_spot_before'), 'before'], after: [t('diff_spot_after'), 'after'] },
+        comment_resolved: { after: [t('diff_comment'), 'after'] },
+        comment_reopened: { after: [t('diff_comment'), 'note'] },
+        comment_deleted: { before: [t('diff_comment'), 'before'] },
+      };
       const locale = dateLocale();
       data.data.forEach(change => {
         const item = textElement('li', '', 'review-change');
@@ -264,9 +274,11 @@ export function initTextReview() {
         heading.append(applyReviewerColor(textElement('span', initials(change.name), 'review-avatar'), change.name), meta);
         const pageText = change.page === '*' ? t('shared_pages_label') : pageLabel(change.page);
         item.append(heading, textElement('p', pageText, 'review-change-meta'));
-        for (const [field, label] of [['before', t('diff_before')], ['after', t('diff_after')]]) {
+        const kindDiff = diffMeta[change.kind] || diffMeta.text_updated;
+        for (const field of ['before', 'after']) {
           if (change[field] === null) continue;
-          const block = textElement('div', '', `review-diff review-diff-${field}`);
+          const [label, tone] = kindDiff[field] || [field === 'before' ? t('diff_before') : t('diff_after'), field];
+          const block = textElement('div', '', `review-diff review-diff-${tone}`);
           block.append(textElement('strong', label), textElement('p', change[field]));
           item.append(block);
         }

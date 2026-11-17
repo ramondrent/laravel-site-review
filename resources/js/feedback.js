@@ -1076,7 +1076,7 @@ export function initFeedback() {
       if (!anchorNotice || !anchorNoticeText || !moveButton) return;
       const resolved = isResolved(rootNote);
       anchorNotice.classList.toggle('is-resolved', resolved);
-      if (noticeCheck) noticeCheck.hidden = !resolved;
+      if (noticeCheck) noticeCheck.toggleAttribute('hidden', !resolved);
       if (resolved) {
         anchorNoticeText.textContent = rootNote.resolved_by
           ? t('resolved_by_detail', { name: rootNote.resolved_by })
@@ -1147,8 +1147,8 @@ export function initFeedback() {
       if (resolveButton && resolveLabel) {
         resolveButton.hidden = false;
         resolveButton.classList.toggle('is-resolved', resolved);
-        if (resolveIconCheck) resolveIconCheck.hidden = resolved;
-        if (resolveIconReopen) resolveIconReopen.hidden = !resolved;
+        if (resolveIconCheck) resolveIconCheck.toggleAttribute('hidden', resolved);
+        if (resolveIconReopen) resolveIconReopen.toggleAttribute('hidden', !resolved);
         resolveLabel.textContent = resolved ? t('reopen_action') : t('resolve_action');
         resolveButton.title = resolved ? t('reopen_action') : t('resolve_action');
       }

@@ -282,8 +282,8 @@ export function initReviewAccess() {
       const label = visible ? t('password_hide') : t('password_show');
       passwordToggle.setAttribute('aria-label', label);
       passwordToggle.title = label;
-      passwordToggle.querySelector('[data-eye-open]').hidden = visible;
-      passwordToggle.querySelector('[data-eye-closed]').hidden = !visible;
+      passwordToggle.querySelector('[data-eye-open]')?.toggleAttribute('hidden', visible);
+      passwordToggle.querySelector('[data-eye-closed]')?.toggleAttribute('hidden', !visible);
     }
 
     passwordToggle?.addEventListener('click', () => {
