@@ -1,6 +1,5 @@
 <section class="review-people feedback-board" data-review-people id="review-people" role="dialog" aria-labelledby="review-people-title" hidden>
-  <header class="review-panel-header"><div><h2 id="review-people-title">{{ $review->trans('ui.people_title') }}</h2><p>{{ $review->trans('ui.people_subtitle') }}</p></div><button type="button" class="review-icon-button" data-review-people-close aria-label="{{ $review->trans('ui.people_close') }}">×</button></header>
-  <p class="review-people-explanation">{{ $review->trans('ui.people_explanation') }}</p>
+  <header class="review-panel-header"><h2 id="review-people-title">{{ $review->trans('ui.people_title') }}</h2><button type="button" class="review-icon-button" data-review-people-close aria-label="{{ $review->trans('ui.people_close') }}">×</button></header>
   <p data-review-people-status role="status" aria-live="polite"></p>
   <div class="review-people-list" data-review-people-list></div>
   @if(app(\RamonDrent\SiteReview\Services\ReviewCursors::class)->configured())
